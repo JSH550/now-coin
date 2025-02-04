@@ -9,6 +9,7 @@ import com.coin.now_coin.common.market.dto.MarketDto;
 import com.coin.now_coin.subscription.SubscribedCoinDto;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class CoinServiceImpl implements CoinService {
 
 
     private final MarketService marketService;
+    private final KafkaMessageProducer kafkaMessageProducer;
 
     public CoinServiceImpl(CoinRepository coinRepository, MarketService marketService, KafkaMessageProducer kafkaMessageProducer) {
         this.coinRepository = coinRepository;
@@ -35,23 +37,17 @@ public class CoinServiceImpl implements CoinService {
         this.kafkaMessageProducer = kafkaMessageProducer;
     }
 
-    private final KafkaMessageProducer kafkaMessageProducer;
-
-
-
     //주기적으로 코인정보를 전송하는 로직
     @Scheduled(fixedRate = 5000) // 5초마다 실행
     public void fetchAndBroadcastCoinPrice() {
-
-
         //외부에서 코인정보 가져오는 API 필요...
 
         List<CoinResponseDto> fullCoinInfo = marketService.getFullCoinInfo();
 
         //클라이언트 전달을위한 Map 자료형
-        Map<String,Object> messageMap = new HashMap<>();
-        messageMap.put("type","all_coins");//모든 코인정보를 담은 메시지라는것을 명시
-        messageMap.put("data",fullCoinInfo);//코인정보 넣기
+        Map<String, Object> messageMap = new HashMap<>();
+        messageMap.put("type", "all_coins");//모든 코인정보를 담은 메시지라는것을 명시
+        messageMap.put("data", fullCoinInfo);//코인정보 넣기
         // JSON 변환을 위한 ObjectMapper
         ObjectMapper objectMapper = new ObjectMapper();
 
@@ -72,7 +68,7 @@ public class CoinServiceImpl implements CoinService {
 
     @Scheduled(fixedRate = 150000) // 5초마다 실행
 
-    public void fetchAndBroadcastSurgeCoinInfo(){
+    public void fetchAndBroadcastSurgeCoinInfo() {
 
         try {
 
@@ -80,15 +76,14 @@ public class CoinServiceImpl implements CoinService {
 
             ObjectMapper objectMapper = new ObjectMapper();
 
-            Map<String,Object> messageMap = new HashMap<>();
-            messageMap.put("type","surging_coins");//모든 코인정보를 담은 메시지라는것을 명시
-            messageMap.put("data",surgingCoins);//코인정보 넣기
+            Map<String, Object> messageMap = new HashMap<>();
+            messageMap.put("type", "surging_coins");//모든 코인정보를 담은 메시지라는것을 명시
+            messageMap.put("data", surgingCoins);//코인정보 넣기
 
             // fullCoinInfo를 JSON 형식으로 변환
             String jsonMessage = objectMapper.writeValueAsString(messageMap);
 
-            log.info("바꾼정보={}",jsonMessage);
-
+            log.info("바꾼정보={}", jsonMessage);
 
 
             kafkaMessageProducer.sendBroadcastMessage(jsonMessage);
@@ -96,7 +91,6 @@ public class CoinServiceImpl implements CoinService {
             // JSON 변환 실패 시 에러 처리
             log.error("에러임={}", e.getMessage());
         }
-
 
 
         //코인 정보들 받아오고
@@ -143,6 +137,13 @@ public class CoinServiceImpl implements CoinService {
             return false;
         }
 
+    }
+
+    @Override
+    public Coin getCoinByMarket(String market) {
+
+        return coinRepository.getCoinByMarket(market)
+                .orElseThrow(() -> new EntityNotFoundException("Coin 엔티티가 없습니다, Coin ID : " + market));
     }
 
 

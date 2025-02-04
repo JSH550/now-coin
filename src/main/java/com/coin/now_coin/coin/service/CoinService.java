@@ -1,5 +1,6 @@
 package com.coin.now_coin.coin.service;
 
+import com.coin.now_coin.coin.Coin;
 import com.coin.now_coin.subscription.SubscribedCoinDto;
 
 import java.util.List;
@@ -18,6 +19,8 @@ public interface CoinService {
 
 
     boolean createCoins();
+
+    Coin getCoinByMarket(String market);
 
 
 }
