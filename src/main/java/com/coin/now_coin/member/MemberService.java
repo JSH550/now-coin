@@ -16,4 +16,10 @@ public interface MemberService {
     MemberLoginDto getLoginDetails(OAuthProvider provider, String providerId);
 
 
+
+
+    Member getMemberByProviderId(String providerId);
+
+
+
 }
