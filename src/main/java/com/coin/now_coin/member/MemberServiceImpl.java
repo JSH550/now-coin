@@ -3,13 +3,14 @@ package com.coin.now_coin.member;
 import com.coin.now_coin.common.auth.OAuthProvider;
 import com.coin.now_coin.member.dto.MemberCreateDto;
 import com.coin.now_coin.member.dto.MemberLoginDto;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Slf4j
-public class MemberServiceImpl implements MemberService{
+public class MemberServiceImpl implements MemberService {
 
     private final MemberRepository memberRepository;
 
@@ -65,4 +66,13 @@ public class MemberServiceImpl implements MemberService{
                 .build();
 
     }
+
+    @Override
+    public Member getMemberByProviderId(String providerId) {
+
+        return memberRepository.findMemberByProviderId(providerId)
+                .orElseThrow(() -> new EntityNotFoundException("Member 엔티티 정보가 없습니다."));
+    }
+
+
 }

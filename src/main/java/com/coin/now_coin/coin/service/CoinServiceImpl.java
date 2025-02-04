@@ -9,6 +9,7 @@ import com.coin.now_coin.common.market.dto.MarketDto;
 import com.coin.now_coin.subscription.SubscribedCoinDto;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class CoinServiceImpl implements CoinService {
 
 
     private final MarketService marketService;
+    private final KafkaMessageProducer kafkaMessageProducer;
 
     public CoinServiceImpl(CoinRepository coinRepository, MarketService marketService, KafkaMessageProducer kafkaMessageProducer) {
         this.coinRepository = coinRepository;
@@ -35,23 +37,17 @@ public class CoinServiceImpl implements CoinService {
         this.kafkaMessageProducer = kafkaMessageProducer;
     }
 
-    private final KafkaMessageProducer kafkaMessageProducer;
-
-
-
     //주기적으로 코인정보를 전송하는 로직
     @Scheduled(fixedRate = 5000) // 5초마다 실행
     public void fetchAndBroadcastCoinPrice() {
-
-
         //외부에서 코인정보 가져오는 API 필요...
 
         List<CoinResponseDto> fullCoinInfo = marketService.getFullCoinInfo();
 
         //클라이언트 전달을위한 Map 자료형
-        Map<String,Object> messageMap = new HashMap<>();
-        messageMap.put("type","all_coins");//모든 코인정보를 담은 메시지라는것을 명시
-        messageMap.put("data",fullCoinInfo);//코인정보 넣기
+        Map<String, Object> messageMap = new HashMap<>();
+        messageMap.put("type", "all_coins");//모든 코인정보를 담은 메시지라는것을 명시
+        messageMap.put("data", fullCoinInfo);//코인정보 넣기
         // JSON 변환을 위한 ObjectMapper
         ObjectMapper objectMapper = new ObjectMapper();
 
@@ -59,20 +55,17 @@ public class CoinServiceImpl implements CoinService {
             // fullCoinInfo를 JSON 형식으로 변환
             String jsonMessage = objectMapper.writeValueAsString(messageMap);
 
-            // WebSocket 클라이언트에게 JSON 메시지 전송
-//            webSocketSessionService.broadcastMessage(jsonMessage);
-
-            kafkaMessageProducer.sendBroadcastMessage(jsonMessage);
+            kafkaMessageProducer.sendBroadcastMessage(jsonMessage);//카프카에 메시지 프로듀스
         } catch (JsonProcessingException e) {
             // JSON 변환 실패 시 에러 처리
-            log.error("에러임={}", e.getMessage());
+            log.error("fetchAndBroadcastCoinPrice 에러발생={}", e.getMessage());
         }
 
     }
 
     @Scheduled(fixedRate = 150000) // 5초마다 실행
 
-    public void fetchAndBroadcastSurgeCoinInfo(){
+    public void fetchAndBroadcastSurgeCoinInfo() {
 
         try {
 
@@ -80,15 +73,14 @@ public class CoinServiceImpl implements CoinService {
 
             ObjectMapper objectMapper = new ObjectMapper();
 
-            Map<String,Object> messageMap = new HashMap<>();
-            messageMap.put("type","surging_coins");//모든 코인정보를 담은 메시지라는것을 명시
-            messageMap.put("data",surgingCoins);//코인정보 넣기
+            Map<String, Object> messageMap = new HashMap<>();
+            messageMap.put("type", "surging_coins");//모든 코인정보를 담은 메시지라는것을 명시
+            messageMap.put("data", surgingCoins);//코인정보 넣기
 
             // fullCoinInfo를 JSON 형식으로 변환
             String jsonMessage = objectMapper.writeValueAsString(messageMap);
 
-            log.info("바꾼정보={}",jsonMessage);
-
+            log.info("바꾼정보={}", jsonMessage);
 
 
             kafkaMessageProducer.sendBroadcastMessage(jsonMessage);
@@ -96,7 +88,6 @@ public class CoinServiceImpl implements CoinService {
             // JSON 변환 실패 시 에러 처리
             log.error("에러임={}", e.getMessage());
         }
-
 
 
         //코인 정보들 받아오고
@@ -118,7 +109,7 @@ public class CoinServiceImpl implements CoinService {
 
 
     @Override
-    public List<String> getCoinSymbolsByMember(String providerId) {
+    public List<String> getCoinNamesByProviderId(String providerId) {
         return coinRepository.getCoinByProviderId(providerId);//유저가 구독한 코인의 심볼을 반환
     }
 
@@ -143,6 +134,14 @@ public class CoinServiceImpl implements CoinService {
             return false;
         }
 
+    }
+
+    @Override
+    public Coin getCoinByMarket(String market) {
+
+        //Market 명으로 DB에서 가상화폐 엔티티를 찾아 반환, 없을경우 예외처리
+        return coinRepository.getCoinByMarket(market)
+                .orElseThrow(() -> new EntityNotFoundException("Coin 엔티티가 없습니다, Coin ID : " + market));
     }
 
 

@@ -16,4 +16,10 @@ public interface MemberRepository extends JpaRepository<Member,Long> {
     Optional<Member> findByOauthProviderAndProviderId(@Param("provider") OAuthProvider provider,
                                                       @Param("providerId") String providerId);
 
+
+    @Query("select m " +
+            "from  Member m " +
+            "where m.providerId= :providerId")
+    Optional<Member> findMemberByProviderId(@Param("providerId")String providerId);
+
 }
