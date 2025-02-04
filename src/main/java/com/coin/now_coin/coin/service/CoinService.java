@@ -15,7 +15,7 @@ public interface CoinService {
 
 
     //유저가 구독한 코인의 심볼을 반환 예 KRW-BTC
-    List<String> getCoinSymbolsByMember(String providerId);
+    List<String> getCoinNamesByProviderId(String providerId);
 
 
     boolean createCoins();

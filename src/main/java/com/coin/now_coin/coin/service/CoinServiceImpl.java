@@ -55,13 +55,10 @@ public class CoinServiceImpl implements CoinService {
             // fullCoinInfo를 JSON 형식으로 변환
             String jsonMessage = objectMapper.writeValueAsString(messageMap);
 
-            // WebSocket 클라이언트에게 JSON 메시지 전송
-//            webSocketSessionService.broadcastMessage(jsonMessage);
-
-            kafkaMessageProducer.sendBroadcastMessage(jsonMessage);
+            kafkaMessageProducer.sendBroadcastMessage(jsonMessage);//카프카에 메시지 프로듀스
         } catch (JsonProcessingException e) {
             // JSON 변환 실패 시 에러 처리
-            log.error("에러임={}", e.getMessage());
+            log.error("fetchAndBroadcastCoinPrice 에러발생={}", e.getMessage());
         }
 
     }
@@ -112,7 +109,7 @@ public class CoinServiceImpl implements CoinService {
 
 
     @Override
-    public List<String> getCoinSymbolsByMember(String providerId) {
+    public List<String> getCoinNamesByProviderId(String providerId) {
         return coinRepository.getCoinByProviderId(providerId);//유저가 구독한 코인의 심볼을 반환
     }
 
@@ -142,6 +139,7 @@ public class CoinServiceImpl implements CoinService {
     @Override
     public Coin getCoinByMarket(String market) {
 
+        //Market 명으로 DB에서 가상화폐 엔티티를 찾아 반환, 없을경우 예외처리
         return coinRepository.getCoinByMarket(market)
                 .orElseThrow(() -> new EntityNotFoundException("Coin 엔티티가 없습니다, Coin ID : " + market));
     }
