@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Coin Prices</title>
+    <link rel="stylesheet" href="/css/styles.css">
+
+<!--    캔들차트 관련 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
+
+</head>
+<body>
+<div class="container">
+    <!-- 알림 컨테이너 -->
+
+    <div id="notification-container" class="notification-container"></div>
+
+
+    <div class="navbar">
+        <div class="logo">코인 정보</div>
+        <button class="login-btn" onclick="redirectToLogin()">로그인</button>
+    </div>
+
+    <!-- 차트 영역 -->
+    <div class="chart-area">
+        <h2>코인 차트</h2>
+        <canvas id="coinChart" width="400" height="200"></canvas>
+    </div>
+
+    <!-- 자산 목록 -->
+    <div class="asset-list">
+
+
+        <h2>가상자산 목록</h2>
+
+        <div class="filter-container">
+            <button id="filter-all">전체</button>
+            <button id="filter-interest">관심</button>
+            <button id="filter-owned">보유</button>
+        </div>
+
+        <table>
+            <thead>
+            <tr>
+                <th data-key="subscription" class="sortable">구독</th> <!-- 추가된 컬럼 -->
+                <th data-key="market" class="sortable">가상자산 명 <span class="sort-icon asc"></span><span
+                        class="sort-icon desc"></span></th>
+                <th data-key="currentPrice" class="sortable">가격 <span class="sort-icon asc"></span><span
+                        class="sort-icon desc"></span></th>
+                <th data-key="changeRate" class="sortable">등락률 <span class="sort-icon asc"></span><span
+                        class="sort-icon desc"></span></th>
+                <th data-key="tradeVolume24h" class="sortable">거래대금 <span class="sort-icon asc"></span><span
+                        class="sort-icon desc"></span></th>
+            </tr>
+            </thead>
+            <tbody id="coin-list">
+            <!-- 실시간 데이터가 여기에 추가됩니다 -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const coinList = document.getElementById("coin-list");
+    let coinsData = []; // 실시간 데이터를 저장할 배열
+    let subscribedMarkets = []; // API에서 받은 구독 마켓 리스트
+    let previousPrices = {}; // 이전 가격을 저장
+    let sortConfig = {key: "", direction: "asc"}; // 현재 정렬 상태 저장
+    let selectedCoin = "BTC/KRW"; // 기본 선택 코인
+    let currentFilter = "all"; // 현재 필터 상태: "all" 또는 "interest"
+
+    let solarCoinsData = [];//급등코인ㅇ저보
+
+
+    // WebSocket 연결 설정
+    const socket = new WebSocket("ws://localhost:8082/ws");
+
+    socket.onopen = () => {
+        console.log("WebSocket 연결 성공!");
+        socket.send("클라이언트가 접속했습니다!");
+    };
+
+    socket.onclose = function () {
+        console.log("WebSocket 연결 종료");
+    };
+
+    socket.onerror = function (error) {
+        console.error("WebSocket 오류 발생:", error);
+    }
+
+    // 웹소켓 메시지 처리
+    socket.onmessage = function (event) {
+        try {
+            const message = JSON.parse(event.data);
+
+            console.log("메시지임" ,message);
+            // 메시지 타입에 따라 처리
+            switch (message.type) {
+                //전체코인정보를 보낸경우
+                case "all_coins":
+                    handleAllCoins(message.data);
+                    break;
+                //급등코인정보를 보낸경우
+                case "surging_coins":
+                    handlePriceSurge(message.data);
+                    break;
+                default:
+                    console.warn("알 수 없는 메시지 타입:", message.type);
+            }
+        } catch (error) {
+            console.error("JSON 파싱 오류:", error);
+        }
+    };
+
+
+
+
+
+
+
+    // 전체 코인 정보를 처리하는 함수
+    function handleAllCoins(data) {
+        coinsData = data; // 데이터를 업데이트
+        applyFilter(); // 현재 필터 상태에 따라 렌더링
+    }
+
+
+    // 급등 코인 정보를 처리하는 함수
+    function handlePriceSurge(data) {
+        const container = document.getElementById("notification-container");
+
+        data.forEach((coin) => {
+            // 알림 생성
+            const notification = document.createElement("div");
+            notification.className = "notification";
+
+            // 알림 내용
+            notification.innerHTML = `
+            🚀 <strong>${coin.market}</strong>: ${coin.name}<br>
+            급등률: <span style="color: red; font-size: 18px;">${coin.changeRate}%</span><br>
+            <small>지금 바로 확인하세요!</small>
+        `;
+
+            // 알림 추가
+            container.appendChild(notification);
+
+            // 일정 시간 후 알림 제거 (페이드 아웃 애니메이션 포함)
+            setTimeout(() => {
+                notification.classList.add("fade-out");
+                setTimeout(() => notification.remove(), 500); // 애니메이션 완료 후 제거
+            }, 10000); // 10초 후 제거
+        });
+    }
+
+
+    // 페이지 로드 시 구독 데이터 API 요청
+    async function fetchSubscribedMarkets() {
+        try {
+            const response = await fetch("http://localhost:8082/api/subscriptions"); // API URL
+            if (!response.ok) throw new Error("구독 데이터 요청 실패");
+            const data = await response.json(); // 응답 데이터 전체 가져오기
+
+            // markets 배열 추출
+            if (data && Array.isArray(data.markets)) {
+                subscribedMarkets = data.markets; // markets 배열을 subscribedMarkets에 저장
+            } else {
+                console.error("API 응답에 'markets' 배열이 없습니다:", data);
+                subscribedMarkets = []; // 기본값
+            }
+
+            applyFilter(); // 현재 필터 상태에 맞게 렌더링
+        } catch (error) {
+            console.error("구독 데이터 로드 실패:", error);
+            subscribedMarkets = []; // 오류 발생 시 기본값 설정
+            applyFilter(); // 빈 데이터로 렌더링
+        }
+    }
+
+
+
+
+    // 코인 테이블 렌더링
+    function renderTable(data) {
+
+        console.log("데이터받은것임~", data);
+        if (!Array.isArray(data)) {
+            console.error("renderTable에 전달된 데이터가 배열이 아닙니다:", data);
+            data = [];
+        }
+
+
+        // 정렬 설정이 존재하면 데이터를 정렬
+        if (sortConfig.key) {
+            data.sort((a, b) => {
+                const valueA = a[sortConfig.key];
+                const valueB = b[sortConfig.key];
+                if (typeof valueA === "string") {
+                    return sortConfig.direction === "asc"
+                        ? valueA.localeCompare(valueB)
+                        : valueB.localeCompare(valueA);
+                } else {
+                    return sortConfig.direction === "asc" ? valueA - valueB : valueB - valueA;
+                }
+            });
+        }
+
+        // 테이블 렌더링
+        coinList.innerHTML = data
+            .map((coin) => {
+                const isSubscribed = subscribedMarkets.includes(coin.market); // 구독 여부 확인
+                const starSymbol = isSubscribed ? "★" : "☆";
+
+                const currentPrice = coin.currentPrice;
+                const changeRate = coin.changeRate;
+
+                const changeClass = changeRate < 0 ? "negative" : "positive";
+                const priceColor = changeRate < 0 ? "blue" : "red";
+
+                let priceClass = "";
+                if (previousPrices[coin.market] !== undefined) {
+                    if (currentPrice > previousPrices[coin.market]) {
+                        priceClass = "price-up";
+                    } else if (currentPrice < previousPrices[coin.market]) {
+                        priceClass = "price-down";
+                    }
+                }
+
+                previousPrices[coin.market] = currentPrice;
+
+                return `
+                <tr class="coin-row" data-market="${coin.market}" id="${coin.market}">
+                    <td>
+                        <span class="star-symbol">${starSymbol}</span>
+                    </td>
+
+                     <td>
+                        ${coin.market}<span class="subtext">${coin.name}</span>
+                    </td>
+                    <td class="${priceClass}" style="color: ${priceColor}">${currentPrice.toLocaleString()} KRW</td>
+                    <td class="change ${changeClass}" style="color: ${priceColor}">${changeRate > 0 ? "+" : ""}${changeRate}%</td>
+                    <td>${coin.tradeVolume24h.toLocaleString()} 백만원</td>
+                </tr>`
+            })
+            .join("");
+
+        // 상승/하락 효과 제거
+        setTimeout(() => {
+            document.querySelectorAll(".price-up, .price-down").forEach((cell) => {
+                cell.classList.remove("price-up", "price-down");
+            });
+        }, 1000);
+    }
+
+
+    // 테이블 헤더 클릭 이벤트 (정렬)
+    document.querySelectorAll(".sortable").forEach((header) => {
+        header.addEventListener("click", () => {
+            const key = header.dataset.key;
+
+            if (sortConfig.key === key) {
+                sortConfig.direction = sortConfig.direction === "asc" ? "desc" : "asc";
+            } else {
+                sortConfig.key = key;
+                sortConfig.direction = "asc";
+            }
+
+            document.querySelectorAll(".sortable").forEach((el) => el.classList.remove("sort-asc", "sort-desc"));
+            header.classList.add(sortConfig.direction === "asc" ? "sort-asc" : "sort-desc");
+
+            applyFilter(); // 필터링된 데이터로 정렬하여 렌더링
+        });
+    });
+
+
+    fetchSubscribedMarkets(); // 구독 데이터 로드
+
+
+    //필터관련
+
+    document.getElementById("filter-interest").addEventListener("click", () => {
+        console.log("관심필터 누름")
+        currentFilter = "interest"; // 필터 상태를 "interest"로 설정
+        applyFilter(); // 필터 적용
+    });
+
+    document.getElementById("filter-all").addEventListener("click", () => {
+        currentFilter = "all"; // 필터 상태를 "all"로 설정
+        applyFilter(); // 필터 적용
+    });
+
+    document.getElementById("filter-owned").addEventListener("click", () => {
+        console.log("보유 필터 누름");
+        currentFilter = "owned"; // 필터 상태를 "owned"로 설정
+        applyFilter(); // 필터 적용
+    });
+
+    function applyFilter() {
+        let filteredData = coinsData;
+
+        if (currentFilter === "interest") {
+            filteredData = coinsData.filter((coin) => subscribedMarkets.includes(coin.market));
+            console.log("관심 필터 데이터:", filteredData); // 필터링된 데이터 로그 출력
+
+        }
+
+
+        renderTable(filteredData);
+    }
+
+
+
+    //코인 구독 관련 로직들...
+
+
+    // 별표 클릭 이벤트 추가
+    document.addEventListener("click", (event) => {
+        if (event.target.classList.contains("star-symbol")) {
+
+            const market = event.target.closest("tr").dataset.market;
+            console.log("별표클릭했슈" + market);
+            toggleSubscription(market, event.target);
+
+            // toggleSubscription(market, event.target);
+        }
+    });
+
+
+    /**
+     * 구독 토글 API 호출 및 UI 업데이트
+     * @param {string} market - 코인 마켓 ID (예: BTC/KRW)
+     * @param {HTMLElement} starElement - 클릭한 별 아이콘 요소
+     */
+    async function toggleSubscription(market, starElement) {
+        try {
+
+            const requestData ={
+                market: market
+            }
+
+            //구독 토글 요청
+            const response = await fetch(`http://localhost:8082/api/subscriptions`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body:JSON.stringify(requestData),//누른 코인의 마켓정보
+            });
+
+            // 응답 데이터 확인 (구독 추가 or 삭제 여부)
+            if (!response.ok) throw new Error("구독 요청 실패");
+
+            await fetchSubscribedMarkets();//구독정보 갱신
+
+
+        } catch (error) {
+            console.error("구독 요청 중 오류 발생:", error);
+        }
+    }
+
+    //캔틀차트 관련 로직
+
+    // ✅ 코인 목록 테이블에 클릭 이벤트 추가
+    document.getElementById("coin-list").addEventListener("click", function (event) {
+        let targetRow = event.target.closest("tr"); // 클릭된 행 찾기
+        if (!targetRow) return; // 클릭된 요소가 행이 아니면 무시
+
+        let market = targetRow.dataset.market; // 해당 코인의 마켓 ID 가져오기
+        if (!market) return; // 마켓 ID가 없으면 무시
+
+        console.log(`📌 선택한 코인: ${market}`); // 콘솔 확인
+
+        // 선택한 코인의 차트 데이터 업데이트
+        updateCandleChart(market);
+    });
+
+
+    // ✅ 업비트 API에서 특정 마켓의 캔들 데이터 가져오기
+    async function fetchUpbitCandleData(market = "KRW-BTC", count = 30) {
+        const url = `https://api.upbit.com/v1/candles/days?market=${market}&count=${count}`;
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.map(candle => ({
+                x: new Date(candle.candle_date_time_kst), // 날짜 (한국시간)
+                o: candle.opening_price, // 시가
+                h: candle.high_price,    // 고가
+                l: candle.low_price,     // 저가
+                c: candle.trade_price    // 종가
+            })).reverse(); // 최신 데이터가 오른쪽으로 가도록 정렬
+        } catch (error) {
+            console.error("업비트 API 데이터 요청 실패:", error);
+            return [];
+        }
+    }
+
+    // ✅ 선택한 코인의 캔들차트 정보 가져와서 업데이트
+    async function updateCandleChart(market) {
+        const candleData = await fetchUpbitCandleData(market, 30); // 새로운 데이터 요청
+        if (candleData.length === 0) {
+            console.warn("가져온 캔들 데이터가 없습니다.");
+            return;
+        }
+
+        console.log(`📊 ${market} 차트 업데이트 중...`, candleData);
+
+        // 기존 차트가 있으면 업데이트, 없으면 새로 생성
+        if (window.coinChart) {
+            window.coinChart.data.datasets[0].data = candleData;
+            window.coinChart.data.datasets[0].label = `${market} 가격`; // ✅ label 업데이트
+            window.coinChart.options.plugins.title.text = `${market} 캔들차트`; // 차트 제목 변경
+            window.coinChart.update();
+        } else {
+            createCandleChart(market); // 차트가 없으면 새로 생성
+        }
+    }
+
+
+    // ✅ 차트 생성 함수
+    // ✅ 캔들 차트 생성 함수 (처음 1회 실행)
+    async function createCandleChart(market = "KRW-BTC") {
+        const ctx = document.getElementById("coinChart").getContext("2d");
+        const candleData = await fetchUpbitCandleData(market, 30);
+
+        console.log(`📊 ${market} 초기 차트 데이터`, candleData);
+
+        window.coinChart = new Chart(ctx, {
+            type: "candlestick",
+            data: {
+                datasets: [{
+                    label: `${market} 가격`,
+                    data: candleData,
+                    borderColor: "black",
+                    backgroundColor: "rgba(0, 0, 0, 0.1)",
+                    color: {
+                        up: "green",
+                        down: "red",
+                        unchanged: "gray"
+                    },
+                    barThickness: 10,
+                    maxBarThickness: 15
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: `${market} 캔들차트` // 차트 제목
+                    }
+                },
+                scales: {
+                    x: {
+                        type: "time",
+                        time: {
+                            unit: "day",
+                            displayFormats: {
+                                day: "yyyy-MM-dd" // ✅ 날짜 포맷 설정
+                            },
+                            tooltipFormat: "yyyy-MM-dd" // ✅ 툴팁에도 날짜 표시
+                        },
+
+                        title: {
+                            display: true,
+                            text: "날짜" // ✅ x축 제목 추가
+                        },
+
+                        ticks: {
+                            autoSkip: true,
+                            maxTicksLimit: 10
+                        }
+                    },
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+
+    }
+
+    // 페이지 로드 시 기본 차트 생성, 비트코인
+    document.addEventListener("DOMContentLoaded", () => createCandleChart("KRW-BTC"));
+
+
+
+
+    //로그인페이지이동로직
+    function redirectToLogin() {
+        // 로그인 페이지로 이동
+        window.location.href = "/api/login"; // 실제 소셜 로그인 선택 페이지 URL로 변경하세요
+    }
+
+</script>
+
+</body>
+</html>
