@@ -1,5 +1,7 @@
 package com.coin.now_coin.subscription.service;
 
+import java.util.Map;
+
 public interface SubscriptionService {
 
 
@@ -13,5 +15,14 @@ public interface SubscriptionService {
      * @param providerId 사용자의 Provider ID (소셜 로그인 등과 연동된 ID)
      */
     void toggleSubscriptions(String market, String providerId);
+
+
+    /**
+     * 회원의 구독한 코인 목록을 조회하여 JSON 형태로 반환합니다.
+     *
+     * @param providerId OAuth2 제공자 ID
+     * @return 회원이 구독한 코인의 목록을 포함한 응답 객체 (status, markets, count 포함)
+     */
+    Map<String, Object> getMemberSubscriptionCoins(String providerId);
 
 }

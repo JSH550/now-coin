@@ -11,7 +11,7 @@ import java.util.Map;
 
 @Controller
 @Slf4j
-@RequestMapping("/api/subscription")
+@RequestMapping("/api/subscriptions")
 public class SubscribeController {
 
     private final SubscriptionService subscribeService;
@@ -21,6 +21,28 @@ public class SubscribeController {
     }
 
 
+    /**
+     * 유저가 구독한 코인들을 전송하는 API
+     * @param authentication 유저의 인증정보
+     * @return JSON 형태로 데이터 반환
+     */
+    @GetMapping
+    public ResponseEntity<?> getSubscriptionsData(Authentication authentication) {
+
+        if (authentication == null) {
+            return ResponseEntity.ok("미로그인유저");
+        }
+
+        //유저의 ProviderId 파싱
+        String providerId = authentication.getName();
+
+        //유저가 구독한 코인들 List로 가져옴
+        Map<String, Object> response = subscribeService.getMemberSubscriptionCoins(providerId);
+
+        return ResponseEntity.ok(response);//JSON 형태로 반환(Map자료형)
+
+
+    }
     /**
      * 유저의 코인 구독 정보를 변경하는 API
      * @param requestBody JSON 형태의 requestBody, market 정보 포함

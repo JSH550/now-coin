@@ -11,6 +11,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -52,6 +55,20 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             subscriptionRepository.save(subscription);
             log.info("구독 정보 생성: memberId={}, market={}", member.getId(), market);
         }
+    }
+
+    @Override
+    public Map<String, Object> getMemberSubscriptionCoins(String providerId) {
+        List<String> coinsNameList = coinService.getCoinNamesByProviderId(providerId);
+
+        //JSON 형태로 보내기위한 Map 객체
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("markets", coinsNameList);
+        response.put("count", coinsNameList.size());
+
+        return response;//반환
+
     }
 
     /**
